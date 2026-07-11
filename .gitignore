@@ -6,3 +6,4 @@ node_modules/
 .env*
 *.pt
 device/homography.json
+.vscode/settings.json
