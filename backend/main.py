@@ -33,18 +33,34 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 GEMINI_TIMEOUT_SECONDS = 3.0
-SYSTEM_PROMPT = """You are a dispatch system generating a briefing for emergency responders arriving at a construction site. You will receive a JSON object of measured facts.
+SYSTEM_PROMPT = """You are the dispatch voice for an automated worker-safety system on a construction site. A fall has been confirmed. You are briefing the responder who is about to enter.
+You receive (a) an annotated camera frame captured at the moment of detection, and (b) a JSON object of measured facts.
+Output EXACTLY three sentences, spoken aloud over a radio. Urgent, clipped, professional. No preamble, no markdown.
+Sentence 1: The situation and the clock — where the worker is, how long they have been down.
+Sentence 2: What is VISIBLE in the frame — the worker's body position and orientation, and whether anything obstructs the view of them.
+Sentence 3: How to reach them from the entrance, and what to get around.
+WHAT YOU MAY SAY ABOUT THE IMAGE — visible physical facts only:
 
-Output EXACTLY two sentences. Plain, factual, radio-dispatch tone. No preamble, no markdown, no bullet points.
+Body position: prone, supine, on their side, curled, sprawled, limbs extended.
+Orientation relative to the camera or to objects in the frame.
+Whether the worker is partially hidden by an object.
+Whether the worker is fully or partially in view.
 
-Sentence 1: where the worker is (coordinates in metres) and how long they have been down.
-Sentence 2: how to reach them from the entrance, referencing any obstacle the route goes around.
+WHAT YOU MUST NEVER SAY — you CANNOT see these things and stating them would be a fabricated medical assessment given to a first responder:
 
-HARD CONSTRAINTS:
-- Use ONLY facts present in the JSON. Every number you state must appear in it.
-- NEVER invent: injuries, medical condition, worker identity, cause of the fall, site details not listed, or any distance not given.
-- NEVER mention hardware state — no GPIO, klaxon, siren, alarm, or physical output. You do not know what the device did.
-- If a field is missing, omit it. Do not guess."""
+Consciousness, responsiveness, or alertness.
+Injuries, bleeding, fractures, trauma, or pain.
+Breathing, pulse, or any vital sign.
+The cause of the fall.
+The worker's identity, age, or condition.
+Anything you are inferring rather than observing.
+
+If you cannot see the worker clearly in the frame, say exactly that — "visual is partially obstructed" — and do not speculate.
+OTHER HARD CONSTRAINTS:
+
+Every number you state must appear in the JSON.
+NEVER mention hardware — no GPIO, klaxon, siren, or physical output.
+Say "metres," not "m." Round the way a person speaks: "just over five seconds," "about two metres." Never read out decimals."""
 FALLBACK_TEMPLATE = "Worker down at ({x}, {y}) metres, node {node_id}. Down {fall_duration} seconds. Route from entrance: {route_length} metres."
 
 SITE_PAYLOAD = {
@@ -215,8 +231,8 @@ def _valid_briefing(text: object, payload: dict) -> str:
     briefing = text.strip()
     if not briefing or "```" in briefing:
         raise ValueError("Gemini response was empty or markdown-wrapped")
-    if len(re.findall(r"[^.!?]+(?:[.!?](?=\s|$)|$)", briefing)) != 2:
-        raise ValueError("Gemini response did not contain exactly two sentences")
+    if len(re.findall(r"[^.!?]+(?:[.!?](?=\s|$)|$)", briefing)) != 3:
+        raise ValueError("Gemini response did not contain exactly three sentences")
     if any(term in briefing.casefold() for term in ("gpio", "klaxon", "siren", "alarm", "physical output", "hardware")):
         raise ValueError("Gemini response mentioned hardware state")
     event = payload["event"]
@@ -225,18 +241,25 @@ def _valid_briefing(text: object, payload: dict) -> str:
     return briefing
 
 
-async def generate_briefing(payload: dict) -> str:
+async def generate_briefing(payload: dict, frame_b64: str) -> str:
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is not configured")
+    if not frame_b64:
+        raise RuntimeError("frame_b64 is missing")
 
     body = json.dumps(
         {
             "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-            "contents": [{"role": "user", "parts": [{"text": json.dumps(payload, separators=(",", ":"))}]}],
+            "contents": [{
+                "parts": [
+                    {"inline_data": {"mime_type": "image/jpeg", "data": frame_b64}},
+                    {"text": json.dumps(payload, separators=(",", ":"))},
+                ],
+            }],
             "generationConfig": {
                 "temperature": 0.2,
-                "maxOutputTokens": 150,
+                "maxOutputTokens": 250,
                 "thinkingConfig": {"thinkingBudget": 0},
             },
         },
@@ -283,7 +306,7 @@ async def receive_event(event: Event) -> dict:
     if event.event_type == "FALL_DETECTED":
         briefing_payload = gemini_payload(event)
         try:
-            payload["briefing"] = await generate_briefing(briefing_payload)
+            payload["briefing"] = await generate_briefing(briefing_payload, event.frame_b64)
             payload["briefing_source"] = "gemini"
         except Exception:
             logger.exception("Gemini briefing failed; using fallback")
