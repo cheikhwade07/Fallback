@@ -5,8 +5,6 @@ import { SITE_GEOMETRY } from "@/lib/site-config";
 import { useLiveStream, type PreviewMode, type StreamEvent, type UiState } from "@/lib/live-stream";
 import { SiteMap } from "./SiteMap";
 
-const BRIEFING = "Node {node} detected sustained prone posture for 3.0 seconds. Safety output has fired and the responder route is projected to the confirmed event position.";
-
 const clock = (seconds: number) => `${String(Math.floor(Math.max(0, seconds) / 60)).padStart(2, "0")}:${String(Math.floor(Math.max(0, seconds) % 60)).padStart(2, "0")}`;
 const time = (value?: string) => {
   const date = value ? new Date(value) : null;
@@ -36,8 +34,8 @@ function AlertBand({ state, duration, recoveredEvent, onAcknowledge }: { state: 
   const idle = state === "IDLE";
   return <section className="fig-alert">
     <div className="alert-main"><span>{idle ? "SITE CLEAR // ZONE B" : down ? "POSTURE DOWN" : "FALL CONFIRMED // ZONE B"}</span><h1>{idle ? "ALL CLEAR" : down ? "CONFIRMING" : "MAN DOWN"}</h1><small>FALL DURATION {duration.toFixed(1).padStart(4, "0")} S</small></div>
-    <div className="alert-evidence"><span>CONFIRMATION EVIDENCE</span><b className={idle ? "" : "checked"}>HORIZONTAL POSTURE</b><b className={!down && !idle ? "checked" : ""}>3.0 S THRESHOLD</b></div>
-    <div className="alert-clock"><div>DOWN {clock(duration)}</div><small>SAFETY OUTPUT {idle || down ? "ARMED" : "FIRED"}</small>{down && <i><b style={{ width: `${Math.min(100, duration / 3 * 100)}%` }}/></i>}{state === "FALL_CONFIRMED" && <button type="button" className="acknowledge" onClick={onAcknowledge}>ACKNOWLEDGE</button>}</div>
+    <div className="alert-evidence"><span>CONFIRMATION EVIDENCE</span><b className={idle ? "" : "checked"}>HORIZONTAL POSTURE</b><b className={!down && !idle ? "checked" : ""}>5.0 S THRESHOLD</b></div>
+    <div className="alert-clock"><div>DOWN {clock(duration)}</div><small>SAFETY OUTPUT {idle || down ? "ARMED" : "FIRED"}</small>{down && <i><b style={{ width: `${Math.min(100, duration / 5 * 100)}%` }}/></i>}{state === "FALL_CONFIRMED" && <button type="button" className="acknowledge" onClick={onAcknowledge}>ACKNOWLEDGE</button>}</div>
     {recoveredEvent && <div className="alert-event-log">EVENT LOG // RECOVERED {time(recoveredEvent.timestamp)}{state === "FALL_CONFIRMED" ? " // ALERT LATCH HELD" : ""}</div>}
   </section>;
 }
@@ -52,11 +50,12 @@ export function DevStateBar({ mode, onChange }: { mode: PreviewMode; onChange: (
 export function Dashboard() {
   const { acknowledge, event, previewMode, recoveredEvent, setPreviewMode, state } = useLiveStream();
   const duration = state === "IDLE" ? 0 : event?.fall_duration ?? 0;
-  const worker = { x: event?.x ?? 7.8, y: event?.y ?? 3.25 };
+  const worker = { x: event?.x ?? 1.75, y: event?.y ?? 1.75 };
   const image = event?.frame_b64 ? `data:image/jpeg;base64,${event.frame_b64}` : null;
   const node = event?.node_id ?? "--";
   const status = state === "IDLE" ? "MONITORING" : state === "DOWN" ? "POSTURE DOWN" : "FALL CONFIRMED";
   const alertTone = state === "FALL_CONFIRMED" ? "red" : state === "DOWN" ? "amber" : "neutral";
+  const briefingSource = event?.briefing_source === "gemini" ? "GEMINI" : "TEMPLATE";
 
   return <main className={`fig-dashboard state-${state.toLowerCase()}`}>
     <header className="fig-header"><strong>FALLBACK</strong><span>// SITE 04</span><i/><b>NODE {node}</b><em><i/>{status}</em><small>{state === "IDLE" ? `LATENCY_MS ${event ? Math.round(event.latency_ms) : "--"}` : `EVENT TIMESTAMP ${time(event?.timestamp)}    LATENCY_MS ${event ? String(Math.round(event.latency_ms)).padStart(3, "0") : "--"}`}</small></header>
@@ -66,8 +65,8 @@ export function Dashboard() {
         <Panel title={state === "DOWN" ? "LIVE FRAME" : "LAST FRAME"} meta={state === "IDLE" ? "LIVE / CAM 01" : time(event?.timestamp)} className={`${state.toLowerCase()}-frame`}><Camera image={image} state={state}/></Panel>
       </div>
       <div className="layout-right">
-        <Panel title="SITE MAP" meta="2D · 2 M GRID" className={`${state.toLowerCase()}-map`} actions={<a className="expand-map" href="/map">EXPAND</a>}><SiteMap obstacles={SITE_GEOMETRY.obstacles} entrance={SITE_GEOMETRY.entrance} worker={worker} route={SITE_GEOMETRY.route} alertTone={alertTone}/></Panel>
-        {state === "IDLE" ? <Panel title="OPERATIONAL BRIEFING" meta="SYSTEM NOMINAL" className="idle-brief layout-brief"><div className="idle-copy"><h2>NODE {node} / FALLBACK MONITORING</h2><p>Depth and pose streams are nominal.<br/>The responder route remains staged while<br/>posture is upright.</p><div className="briefing-facts"><span>POSTURE&nbsp; UPRIGHT</span><span>EVENT STATE&nbsp; IDLE</span><span>FALL TIMER&nbsp; 00:00</span><span>GPIO&nbsp; ARMED / NOT FIRED</span></div></div></Panel> : state === "DOWN" ? <Panel title="OPERATIONAL BRIEFING" meta="SAFETY HOLD" className="down-state layout-brief"><div className="down-copy"><h2>FALL NOT YET CONFIRMED</h2><p>Awaiting sustained down duration of 3.0 seconds.</p><div><span>POSTURE<b>DOWN</b></span><span>DOWN_DURATION_S<b>{duration.toFixed(1)}</b></span><span>CONFIRM_THRESHOLD_S<b>03.0</b></span><span>SAFETY OUTPUT<b>HOLD</b></span></div></div></Panel> : <Panel title="OPERATIONAL BRIEFING" meta="BRIEFING ACTIVE" className="confirmed-brief layout-brief"><div className="confirmed-copy"><p>{BRIEFING.replace("{node}", node)}</p><div className="briefing-facts"><span>EVENT ID / FALL-2407-091</span><span>ZONE / LEVEL 01 · EAST BAY</span><span>OUTPUT / GPIO 17 · FIRED</span></div></div></Panel>}
+        <Panel title="SITE MAP" meta="2D · 2 M GRID" className={`${state.toLowerCase()}-map`} actions={<a className="expand-map" href="/map">EXPAND</a>}><SiteMap obstacles={SITE_GEOMETRY.obstacles} entrance={SITE_GEOMETRY.entrance} worker={worker} alertTone={alertTone}/></Panel>
+        {state === "IDLE" ? <Panel title="OPERATIONAL BRIEFING" meta="SYSTEM NOMINAL" className="idle-brief layout-brief"><div className="idle-copy"><h2>NODE {node} / FALLBACK MONITORING</h2><p>Depth and pose streams are nominal.<br/>The responder route remains staged while<br/>posture is upright.</p><div className="briefing-facts"><span>POSTURE&nbsp; UPRIGHT</span><span>EVENT STATE&nbsp; IDLE</span><span>FALL TIMER&nbsp; 00:00</span></div></div></Panel> : state === "DOWN" ? <Panel title="OPERATIONAL BRIEFING" meta="SAFETY HOLD" className="down-state layout-brief"><div className="down-copy"><h2>FALL NOT YET CONFIRMED</h2><p>Awaiting sustained down duration of 5.0 seconds.</p><div><span>POSTURE<b>DOWN</b></span><span>DOWN_DURATION_S<b>{duration.toFixed(1)}</b></span><span>CONFIRM_THRESHOLD_S<b>05.0</b></span><span>SAFETY OUTPUT<b>HOLD</b></span></div></div></Panel> : <Panel title="OPERATIONAL BRIEFING" meta="BRIEFING ACTIVE" className="confirmed-brief layout-brief"><div className="confirmed-copy"><p>{event?.briefing}</p><small className="briefing-source">{briefingSource}</small></div></Panel>}
       </div>
     </div>
     <DevStateBar mode={previewMode} onChange={setPreviewMode}/>

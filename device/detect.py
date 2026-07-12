@@ -15,6 +15,7 @@ from ultralytics import YOLO
 from capture import MODEL_PATH, fmt, open_camera, person_diagnostics, put_text
 from fall_logic import (
     ASPECT_MIN,
+    CONFIRM_SEC,
     DOWN,
     FallStateMachine,
     FALL_CONFIRMED,
@@ -22,7 +23,6 @@ from fall_logic import (
     SH_HIP_GAP_MAX,
     SubjectTracker,
     TrackCandidate,
-    TORSO_ANGLE_MIN,
     frame_verdict,
 )
 
@@ -129,26 +129,21 @@ def draw_hud(frame, state, down_since, diagnostics, down_fraction, latency_ms,
              tracked_conf, n_candidates, n_persons, position, keypoint_source):
     now = time.perf_counter()
     elapsed = 0.0 if down_since is None else max(0.0, now - down_since)
+    confirm_remaining = max(0.0, CONFIRM_SEC - elapsed)
     aspect = diagnostics.get("aspect", "")
-    torso = diagnostics.get("torso_angle", "")
     gap = diagnostics.get("sh_hip_gap_norm", "")
     try:
         aspect_value = float(aspect)
     except (TypeError, ValueError):
         aspect_value = math.nan
     try:
-        torso_value = float(torso)
-    except (TypeError, ValueError):
-        torso_value = math.nan
-    try:
         gap_value = float(gap)
     except (TypeError, ValueError):
         gap_value = math.nan
     lines = (
-        (f"STATE: {state}   DOWN: {elapsed:.1f}s", 1.35, (0, 255, 255), 4),
+        (f"STATE: {state}   CONFIRM: {confirm_remaining:.1f}s remaining / {CONFIRM_SEC:.1f}s", 1.35, (0, 255, 255), 4),
         (f"aspect: {fmt(aspect) if aspect != '' else '--'} / >{ASPECT_MIN:.2f} [{marker(aspect_value, ASPECT_MIN, aspect_value > ASPECT_MIN)}]", .75, (255, 255, 255), 2),
         (f"sh_hip_gap_norm: {fmt(gap, 3) if gap != '' else '--'} / <{SH_HIP_GAP_MAX:.2f} [{marker(gap_value, SH_HIP_GAP_MAX, gap_value < SH_HIP_GAP_MAX)}]", .75, (255, 255, 255), 2),
-        (f"torso_angle: {fmt(torso) if torso != '' else '--'} / >{TORSO_ANGLE_MIN:.1f} [{marker(torso_value, TORSO_ANGLE_MIN, torso_value > TORSO_ANGLE_MIN)}]", .75, (255, 255, 255), 2),
         (f"kp_ok: {diagnostics.get('kp_ok', 0)}   tracked conf: {'--' if tracked_conf is None else f'{tracked_conf:.2f}'}", .75, (255, 255, 255), 2),
         (f"candidates: {n_candidates}   n_persons raw: {n_persons}", .75, (255, 255, 255), 2),
         (f"window DOWN: {'--' if down_fraction is None else f'{down_fraction:.2f}'}   latency_ms: {latency_ms:.1f}", .75, (255, 255, 255), 2),

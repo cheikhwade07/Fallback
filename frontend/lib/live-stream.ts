@@ -12,19 +12,24 @@ export type StreamEvent = {
   latency_ms: number;
   timestamp: string;
   frame_b64: string;
+  briefing?: string;
+  briefing_source?: "gemini" | "fallback";
 };
 export type UiState = "IDLE" | "DOWN" | "FALL_CONFIRMED";
 export type PreviewMode = "LIVE" | UiState;
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE
-  ?? (process.env.NODE_ENV === "development" ? "http://localhost:8000" : "");
+const configuredApiBase = process.env.NEXT_PUBLIC_API_BASE;
+const API_BASE = configuredApiBase === undefined
+  ? (process.env.NODE_ENV === "development" ? "http://localhost:8000" : "")
+  : configuredApiBase;
+const STREAM_URL = `${API_BASE}/api/stream`;
 
 const PREVIEW_EVENTS: Record<UiState, StreamEvent> = {
   IDLE: {
     node_id: "preview-node",
     event_type: "RECOVERED",
-    x: 2.4,
-    y: 5.6,
+    x: 0.25,
+    y: 0.25,
     fall_duration: 0,
     latency_ms: 88,
     timestamp: "2026-01-01T00:00:00.000Z",
@@ -33,8 +38,8 @@ const PREVIEW_EVENTS: Record<UiState, StreamEvent> = {
   DOWN: {
     node_id: "preview-node",
     event_type: "HEARTBEAT",
-    x: 4.2,
-    y: 6.8,
+    x: 1.75,
+    y: 0.25,
     fall_duration: 2.4,
     latency_ms: 91,
     timestamp: "2026-01-01T00:00:02.400Z",
@@ -43,8 +48,8 @@ const PREVIEW_EVENTS: Record<UiState, StreamEvent> = {
   FALL_CONFIRMED: {
     node_id: "preview-node",
     event_type: "FALL_DETECTED",
-    x: 4,
-    y: 7.3,
+    x: 0.25,
+    y: 1.75,
     fall_duration: 7.4,
     latency_ms: 107,
     timestamp: "2026-01-01T00:00:07.400Z",
@@ -60,7 +65,7 @@ export function useLiveStream() {
   const [previewMode, setPreviewMode] = useState<PreviewMode>("LIVE");
 
   useEffect(() => {
-    const stream = new EventSource(`${API_BASE}/api/stream`);
+    const stream = new EventSource(STREAM_URL);
     stream.onmessage = (message) => {
       try {
         const event = JSON.parse(message.data) as StreamEvent;

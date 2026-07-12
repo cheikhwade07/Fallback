@@ -3,13 +3,12 @@ from collections import deque
 from dataclasses import dataclass
 
 
-ASPECT_MIN = 0.80
+ASPECT_MIN = 0.50
 SH_HIP_GAP_MAX = 0.26
-TORSO_ANGLE_MIN = 20.0
 WINDOW_SEC = 1.5
 ENTER_FRAC = 0.60
 EXIT_FRAC = 0.30
-CONFIRM_SEC = 3.0
+CONFIRM_SEC = 5.0
 
 UNKNOWN = "UNKNOWN"
 UPRIGHT_FRAME = "UPRIGHT_FRAME"
@@ -27,22 +26,19 @@ def frame_verdict(diagnostics, n_persons):
         return UNKNOWN
 
     aspect = diagnostics.get("aspect", "")
-    torso_angle = diagnostics.get("torso_angle", "")
     sh_hip_gap_norm = diagnostics.get("sh_hip_gap_norm", "")
     try:
         aspect = float(aspect)
-        torso_angle = float(torso_angle)
         sh_hip_gap_norm = float(sh_hip_gap_norm)
         has_features = (
             math.isfinite(aspect)
-            and math.isfinite(torso_angle)
             and math.isfinite(sh_hip_gap_norm)
         )
     except (TypeError, ValueError):
         has_features = False
     if not has_features:
         return UNKNOWN
-    if aspect > ASPECT_MIN and sh_hip_gap_norm < SH_HIP_GAP_MAX and torso_angle > TORSO_ANGLE_MIN:
+    if sh_hip_gap_norm < SH_HIP_GAP_MAX and aspect > ASPECT_MIN:
         return DOWN_FRAME
     return UPRIGHT_FRAME
 
