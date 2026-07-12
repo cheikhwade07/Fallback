@@ -16,7 +16,8 @@ export type StreamEvent = {
 export type UiState = "IDLE" | "DOWN" | "FALL_CONFIRMED";
 export type PreviewMode = "LIVE" | UiState;
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE
+  ?? (process.env.NODE_ENV === "development" ? "http://localhost:8000" : "");
 
 const PREVIEW_EVENTS: Record<UiState, StreamEvent> = {
   IDLE: {
