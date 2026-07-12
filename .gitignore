@@ -1,0 +1,9 @@
+/.idea/
+.venv/
+__pycache__/
+node_modules/
+.next/
+.env*
+*.pt
+device/homography.json
+.vscode/settings.json
