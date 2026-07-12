@@ -3,9 +3,9 @@ label             | n_frames | hips detected | median aspect | median sh_hip_gap
 unlabeled         |        0 |          0.0% |            -- |                     -- |                 --
 standing          |        0 |          0.0% |            -- |                     -- |                 --
 kneeling          |        0 |          0.0% |            -- |                     -- |                 --
-fallen            |      516 |         91.1% |         0.964 |                  0.196 |             48.682
+fallen            |      506 |         83.8% |         1.283 |                  0.107 |             67.876
 
 separation check (upright p90 vs fallen p10)
-aspect               | upright p90:       -- | fallen p10:    0.909
-sh_hip_gap_norm      | upright p90:       -- | fallen p10:    0.070
-torso_angle          | upright p90:       -- | fallen p10:   34.911
+aspect               | upright p90:       -- | fallen p10:    0.316
+sh_hip_gap_norm      | upright p90:       -- | fallen p10:    0.046
+torso_angle          | upright p90:       -- | fallen p10:    9.343

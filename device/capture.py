@@ -21,6 +21,9 @@ DEFAULT_CONF = 0.15
 COUNTDOWN_SECONDS = 8.0
 RECORD_SECONDS = 15.0
 FPS_WINDOW = 30
+CAMERA_WIDTH = 1920
+CAMERA_HEIGHT = 1080
+CAMERA_SATURATION = 45
 
 LABELS = {
     ord("1"): "standing",
@@ -40,7 +43,19 @@ def open_camera():
     for index in (0, 1):
         cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
         if cap.isOpened():
-            print(f"Opened webcam index {index}.")
+            # Prefer the webcam's high-resolution MJPEG mode over a blurry
+            # low-bandwidth raw mode when the DirectShow driver supports it.
+            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
+            # Let the webcam correct the very bright doorway and dim floor;
+            # lower saturation keeps the tape and grey floor closer to life.
+            cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)
+            cap.set(cv2.CAP_PROP_AUTO_WB, 1)
+            cap.set(cv2.CAP_PROP_SATURATION, CAMERA_SATURATION)
+            actual_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            actual_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            print(f"Opened webcam index {index} at {actual_width}x{actual_height}.")
             return cap
         cap.release()
     print("ERROR: Could not open webcam index 0 or 1.")

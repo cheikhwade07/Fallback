@@ -3,8 +3,9 @@ from collections import deque
 from dataclasses import dataclass
 
 
-TORSO_ANGLE_MIN = 15.0
-SH_HIP_GAP_MAX = 0.25
+ASPECT_MIN = 0.80
+SH_HIP_GAP_MAX = 0.26
+TORSO_ANGLE_MIN = 20.0
 WINDOW_SEC = 1.5
 ENTER_FRAC = 0.60
 EXIT_FRAC = 0.30
@@ -25,15 +26,23 @@ def frame_verdict(diagnostics, n_persons):
     if n_persons == 0:
         return UNKNOWN
 
+    aspect = diagnostics.get("aspect", "")
     torso_angle = diagnostics.get("torso_angle", "")
     sh_hip_gap_norm = diagnostics.get("sh_hip_gap_norm", "")
     try:
-        has_features = math.isfinite(float(torso_angle)) and math.isfinite(float(sh_hip_gap_norm))
+        aspect = float(aspect)
+        torso_angle = float(torso_angle)
+        sh_hip_gap_norm = float(sh_hip_gap_norm)
+        has_features = (
+            math.isfinite(aspect)
+            and math.isfinite(torso_angle)
+            and math.isfinite(sh_hip_gap_norm)
+        )
     except (TypeError, ValueError):
         has_features = False
     if not has_features:
         return UNKNOWN
-    if torso_angle > TORSO_ANGLE_MIN and sh_hip_gap_norm < SH_HIP_GAP_MAX:
+    if aspect > ASPECT_MIN and sh_hip_gap_norm < SH_HIP_GAP_MAX and torso_angle > TORSO_ANGLE_MIN:
         return DOWN_FRAME
     return UPRIGHT_FRAME
 
