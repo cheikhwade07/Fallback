@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { SITE_GEOMETRY } from "@/lib/site-config";
+import { findRoute } from "@/lib/route";
 import { useLiveStream, type PreviewMode, type StreamEvent, type UiState } from "@/lib/live-stream";
 import { SiteMap } from "./SiteMap";
 
@@ -47,6 +48,33 @@ export function DevStateBar({ mode, onChange }: { mode: PreviewMode; onChange: (
   </div>;
 }
 
+function routeLength(points: { x: number; y: number }[]) {
+  return points.reduce((total, point, index) => {
+    if (index === 0) return total;
+    const previous = points[index - 1];
+    return total + Math.hypot(point.x - previous.x, point.y - previous.y);
+  }, 0);
+}
+
+function ResponderBriefing({ event, worker, duration, source }: { event: StreamEvent | null; worker: { x: number; y: number }; duration: number; source: string }) {
+  const route = findRoute(SITE_GEOMETRY.entrance, worker, SITE_GEOMETRY.obstacles);
+  const distance = routeLength(route.points);
+
+  return <div className="confirmed-copy responder-briefing">
+    <div className="briefing-lead">
+      <span className="briefing-kicker">AI RESPONDER BRIEF // {source}</span>
+      <p>{event?.briefing ?? "Responder briefing unavailable. Follow the marked route and assess the worker on arrival."}</p>
+    </div>
+    <div className="briefing-metrics">
+      <div><span>STATUS</span><b>FALL CONFIRMED</b><small>DOWN {duration.toFixed(1)} S</small></div>
+      <div><span>DISTANCE</span><b>{distance.toFixed(1)} M</b><small>FROM ENTRY</small></div>
+      <div><span>POTENTIAL STATUS</span><b className="briefing-caution">UNASSESSED</b><small>VISUAL CHECK REQUIRED</small></div>
+      <div><span>PREMIERS SECOURS</span><b>HANDOFF READY</b><small>TRAINED RESPONDER</small></div>
+    </div>
+    <div className="rescue-advice"><span>RESCUE ADVICE</span><strong>ENTER VIA ENTRY · FOLLOW THE RED ROUTE · ASSESS BEFORE MOVING</strong></div>
+  </div>;
+}
+
 export function Dashboard() {
   const { acknowledge, event, previewMode, recoveredEvent, setPreviewMode, state } = useLiveStream();
   const duration = state === "IDLE" ? 0 : event?.fall_duration ?? 0;
@@ -66,7 +94,7 @@ export function Dashboard() {
       </div>
       <div className="layout-right">
         <Panel title="SITE MAP" meta="2D · 2 M GRID" className={`${state.toLowerCase()}-map`} actions={<a className="expand-map" href="/map">EXPAND</a>}><SiteMap obstacles={SITE_GEOMETRY.obstacles} entrance={SITE_GEOMETRY.entrance} worker={worker} alertTone={alertTone}/></Panel>
-        {state === "IDLE" ? <Panel title="OPERATIONAL BRIEFING" meta="SYSTEM NOMINAL" className="idle-brief layout-brief"><div className="idle-copy"><h2>NODE {node} / FALLBACK MONITORING</h2><p>Depth and pose streams are nominal.<br/>The responder route remains staged while<br/>posture is upright.</p><div className="briefing-facts"><span>POSTURE&nbsp; UPRIGHT</span><span>EVENT STATE&nbsp; IDLE</span><span>FALL TIMER&nbsp; 00:00</span></div></div></Panel> : state === "DOWN" ? <Panel title="OPERATIONAL BRIEFING" meta="SAFETY HOLD" className="down-state layout-brief"><div className="down-copy"><h2>FALL NOT YET CONFIRMED</h2><p>Awaiting sustained down duration of 5.0 seconds.</p><div><span>POSTURE<b>DOWN</b></span><span>DOWN_DURATION_S<b>{duration.toFixed(1)}</b></span><span>CONFIRM_THRESHOLD_S<b>05.0</b></span><span>SAFETY OUTPUT<b>HOLD</b></span></div></div></Panel> : <Panel title="OPERATIONAL BRIEFING" meta="BRIEFING ACTIVE" className="confirmed-brief layout-brief"><div className="confirmed-copy"><p>{event?.briefing}</p><small className="briefing-source">{briefingSource}</small></div></Panel>}
+        {state === "IDLE" ? <Panel title="OPERATIONAL BRIEFING" meta="SYSTEM NOMINAL" className="idle-brief layout-brief"><div className="idle-copy"><h2>NODE {node} / FALLBACK MONITORING</h2><p>Depth and pose streams are nominal.<br/>The responder route remains staged while<br/>posture is upright.</p><div className="briefing-facts"><span>POSTURE&nbsp; UPRIGHT</span><span>EVENT STATE&nbsp; IDLE</span><span>FALL TIMER&nbsp; 00:00</span></div></div></Panel> : state === "DOWN" ? <Panel title="OPERATIONAL BRIEFING" meta="SAFETY HOLD" className="down-state layout-brief"><div className="down-copy"><h2>FALL NOT YET CONFIRMED</h2><p>Awaiting sustained down duration of 5.0 seconds.</p><div><span>POSTURE<b>DOWN</b></span><span>DOWN_DURATION_S<b>{duration.toFixed(1)}</b></span><span>CONFIRM_THRESHOLD_S<b>05.0</b></span><span>SAFETY OUTPUT<b>HOLD</b></span></div></div></Panel> : <Panel title="OPERATIONAL BRIEFING" meta="RESPONDER PACK" className="confirmed-brief layout-brief"><ResponderBriefing event={event} worker={worker} duration={duration} source={briefingSource}/></Panel>}
       </div>
     </div>
     <DevStateBar mode={previewMode} onChange={setPreviewMode}/>

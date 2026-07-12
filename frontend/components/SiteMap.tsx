@@ -57,15 +57,36 @@ function PlanWalls() {
   );
 }
 
-function IsoWall({ from, to }: { from: ScreenPoint; to: ScreenPoint }) {
-  const lowFrom = drop(from, 11), lowTo = drop(to, 11);
-  return <polygon className="room-wall-iso" points={points([from, to, lowTo, lowFrom])} />;
+function IsoWall({ from, to, height = 11, className = "room-wall-iso" }: { from: ScreenPoint; to: ScreenPoint; height?: number; className?: string }) {
+  const lowFrom = drop(from, height), lowTo = drop(to, height);
+  return <polygon className={className} points={points([from, to, lowTo, lowFrom])} />;
+}
+
+function IsoWindow() {
+  const windowTopLeft = drop(iso({ x: 0.62, y: SITE_GEOMETRY.bounds.y0 }), 7);
+  const windowTopRight = drop(iso({ x: 1.24, y: SITE_GEOMETRY.bounds.y0 }), 7);
+  const windowBottomRight = drop(windowTopRight, 17);
+  const windowBottomLeft = drop(windowTopLeft, 17);
+  const mullionTop = drop(iso({ x: 0.93, y: SITE_GEOMETRY.bounds.y0 }), 7);
+  const mullionBottom = drop(mullionTop, 17);
+
+  return (
+    <g className="wall-window" aria-hidden="true">
+      <polygon className="window-glass" points={points([windowTopLeft, windowTopRight, windowBottomRight, windowBottomLeft])} />
+      <polyline className="window-frame" points={points([windowTopLeft, windowTopRight, windowBottomRight, windowBottomLeft, windowTopLeft])} />
+      <line className="window-mullion" x1={mullionTop.x} y1={mullionTop.y} x2={mullionBottom.x} y2={mullionBottom.y} />
+    </g>
+  );
 }
 
 function IsometricWalls() {
+  const backWallStart = iso({ x: SITE_GEOMETRY.bounds.x0, y: SITE_GEOMETRY.bounds.y0 });
+  const backWallEnd = iso({ x: 1.82, y: SITE_GEOMETRY.bounds.y0 });
+
   return (
     <g className="room-walls" aria-hidden="true">
-      <IsoWall from={iso({ x: SITE_GEOMETRY.bounds.x0, y: SITE_GEOMETRY.bounds.y0 })} to={iso({ x: 1.82, y: SITE_GEOMETRY.bounds.y0 })} />
+      <IsoWall from={backWallStart} to={backWallEnd} height={30} className="room-wall-iso room-wall-tall" />
+      <IsoWindow />
       <IsoWall from={iso({ x: SITE_GEOMETRY.bounds.x0, y: SITE_GEOMETRY.bounds.y1 })} to={iso({ x: SITE_GEOMETRY.bounds.x0, y: SITE_GEOMETRY.bounds.y0 })} />
       <IsoWall from={iso({ x: SITE_GEOMETRY.bounds.x1, y: SITE_GEOMETRY.bounds.y1 })} to={iso({ x: SITE_GEOMETRY.bounds.x0, y: SITE_GEOMETRY.bounds.y1 })} />
     </g>
