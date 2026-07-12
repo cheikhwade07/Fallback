@@ -26,6 +26,7 @@ class Event(BaseModel):
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
+    # Hackathon shortcut: device posts and the deployed dashboard may come from different origins.
     allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],

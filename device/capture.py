@@ -1,4 +1,6 @@
 import csv
+import argparse
+from datetime import datetime
 import math
 from collections import deque
 from pathlib import Path
@@ -12,26 +14,23 @@ from ultralytics import YOLO
 
 WINDOW_NAME = "Fallback Pose Capture"
 MODEL_PATH = "yolov8n-pose.pt"
-LOG_PATH = Path(__file__).with_name("pose_log.csv")
+LOG_DIR = Path(__file__).with_name("logs")
 SUMMARY_PATH = Path(__file__).with_name("summary.txt")
 KEYPOINT_CONF = 0.3
+DEFAULT_CONF = 0.15
 COUNTDOWN_SECONDS = 8.0
 RECORD_SECONDS = 15.0
 FPS_WINDOW = 30
 
 LABELS = {
     ord("1"): "standing",
-    ord("2"): "walking",
     ord("3"): "kneeling",
-    ord("4"): "bending",
-    ord("5"): "fallen_across",
-    ord("6"): "fallen_toward",
-    ord("7"): "fallen_occluded",
+    ord("5"): "fallen",
 }
-UPRIGHT = ("standing", "walking", "kneeling", "bending")
-FALLEN = ("fallen_across", "fallen_toward", "fallen_occluded")
+UPRIGHT = ("standing", "kneeling")
+FALLEN = ("fallen",)
 LOG_COLUMNS = (
-    "t_rel", "label", "ms", "n_persons", "conf", "bbox_w", "bbox_h",
+    "session_id", "t_rel", "label", "ms", "n_persons", "conf", "bbox_w", "bbox_h",
     "aspect", "sh_y", "hip_y", "sh_hip_gap", "sh_hip_gap_norm",
     "torso_angle", "ank_y", "kp_ok",
 )
@@ -50,12 +49,14 @@ def open_camera():
 
 
 def person_diagnostics(result):
-    values = {name: "" for name in LOG_COLUMNS[4:-1]}
+    values = {name: "" for name in LOG_COLUMNS[5:-1]}
     values["kp_ok"] = 0
     if result.boxes is None or len(result.boxes) == 0:
         return values
 
-    person_index = int(result.boxes.conf.argmax().item())
+    boxes = result.boxes.xyxy
+    areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+    person_index = int(areas.argmax().item())
     values["conf"] = float(result.boxes.conf[person_index].item())
     x1, y1, x2, y2 = result.boxes.xyxy[person_index].tolist()
     bbox_w, bbox_h = x2 - x1, y2 - y1
@@ -110,13 +111,13 @@ def draw_overlay(frame, fps, elapsed_ms, n_persons, label, diagnostics,
     hip_yes = diagnostics["hip_y"] != ""
     ankle_yes = diagnostics["ank_y"] != ""
     lines = (
-        f"FPS: {fps:.1f}   ms: {elapsed_ms:.1f}   n_persons: {n_persons}",
-        f"aspect: {fmt(diagnostics['aspect'])}   sh_hip_gap: {fmt(diagnostics['sh_hip_gap'], 1)}",
-        f"torso_angle: {fmt(diagnostics['torso_angle'], 1)}   HIP: {'yes' if hip_yes else 'no'}  ANK: {'yes' if ankle_yes else 'no'}",
-        f"LABEL: {label}",
+        f"conf: {fmt(diagnostics['conf'])}   kp_ok: {diagnostics['kp_ok']}   n_persons: {n_persons}",
+        f"aspect: {fmt(diagnostics['aspect'])}   sh_hip_gap_norm: {fmt(diagnostics['sh_hip_gap_norm'], 3)}",
+        f"HIP: {'yes' if hip_yes else 'no'}   ANK: {'yes' if ankle_yes else 'no'}   FPS: {fps:.1f}   ms: {elapsed_ms:.1f}",
     )
+    put_text(frame, f"LABEL: {label.upper()}", (12, 48), 1.45, (0, 255, 255), 4)
     for index, line in enumerate(lines):
-        put_text(frame, line, (12, 30 + index * 31))
+        put_text(frame, line, (12, 88 + index * 31))
 
     height, width = frame.shape[:2]
     if countdown_left is not None:
@@ -135,29 +136,23 @@ def draw_overlay(frame, fps, elapsed_ms, n_persons, label, diagnostics,
         put_text(frame, "IDLE - press SPACE to capture", (12, 173), 0.8, (0, 255, 0), 2)
 
 
-def append_row(row):
-    ensure_log_schema()
-    write_header = not LOG_PATH.exists() or LOG_PATH.stat().st_size == 0
-    with LOG_PATH.open("a", newline="", encoding="utf-8") as handle:
+def create_session_log():
+    LOG_DIR.mkdir(exist_ok=True)
+    session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = LOG_DIR / f"pose_{session_id}.csv"
+    suffix = 1
+    while path.exists():
+        path = LOG_DIR / f"pose_{session_id}_{suffix}.csv"
+        suffix += 1
+    with path.open("x", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=LOG_COLUMNS)
-        if write_header:
-            writer.writeheader()
-        writer.writerow(row)
-
-
-def ensure_log_schema():
-    if not LOG_PATH.exists() or LOG_PATH.stat().st_size == 0:
-        return
-    with LOG_PATH.open(newline="", encoding="utf-8") as handle:
-        reader = csv.DictReader(handle)
-        if tuple(reader.fieldnames or ()) == LOG_COLUMNS:
-            return
-        old_rows = list(reader)
-    with LOG_PATH.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=LOG_COLUMNS, extrasaction="ignore")
         writer.writeheader()
-        writer.writerows(old_rows)
-    print("Upgraded existing pose_log.csv to the capture schema.")
+    return session_id, path
+
+
+def append_row(log_path, row):
+    with log_path.open("a", newline="", encoding="utf-8") as handle:
+        csv.DictWriter(handle, fieldnames=LOG_COLUMNS).writerow(row)
 
 
 def percentile(values, percent):
@@ -171,10 +166,10 @@ def percentile(values, percent):
     return ordered[low] + (ordered[high] - ordered[low]) * (position - low)
 
 
-def read_rows():
-    if not LOG_PATH.exists() or LOG_PATH.stat().st_size == 0:
+def read_rows(log_path):
+    if not log_path.exists() or log_path.stat().st_size == 0:
         return []
-    with LOG_PATH.open(newline="", encoding="utf-8") as handle:
+    with log_path.open(newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
 
 
@@ -189,11 +184,11 @@ def numeric(rows, field):
     return output
 
 
-def build_summary():
-    rows = read_rows()
+def build_summary(log_path):
+    rows = read_rows(log_path)
     header = "label             | n_frames | hips detected | median aspect | median sh_hip_gap_norm | median torso_angle"
     lines = [header, "-" * len(header)]
-    for label in LABELS.values():
+    for label in ("unlabeled", *LABELS.values()):
         group = [row for row in rows if row.get("label") == label]
         hips = sum(row.get("hip_y", "") != "" for row in group)
         hip_percent = 100.0 * hips / len(group) if group else 0.0
@@ -217,12 +212,16 @@ def build_summary():
 
 
 def main():
-    ensure_log_schema()
+    parser = argparse.ArgumentParser(description="Capture labeled pose diagnostics.")
+    parser.add_argument("--conf", type=float, default=DEFAULT_CONF,
+                        help=f"YOLO detection confidence threshold (default: {DEFAULT_CONF})")
+    args = parser.parse_args()
+    session_id, log_path = create_session_log()
+    print(f"Session {session_id}; logging to {log_path}.")
     cap = open_camera()
     print(f"Loading {MODEL_PATH}.")
     model = YOLO(MODEL_PATH)
-    selected_label = "standing"
-    capture_label = selected_label
+    selected_label = "unlabeled"
     phase = "idle"
     phase_started = 0.0
     elapsed_times = deque(maxlen=FPS_WINDOW)
@@ -235,7 +234,7 @@ def main():
                 print("ERROR: Webcam stopped returning frames.")
                 break
 
-            result = model(frame, verbose=False)[0]
+            result = model(frame, conf=args.conf, verbose=False)[0]
             n_persons = 0 if result.boxes is None else len(result.boxes)
             diagnostics = person_diagnostics(result)
             display = result.plot() if n_persons else frame.copy()
@@ -250,22 +249,12 @@ def main():
                 if countdown_left <= 0:
                     phase, phase_started = "recording", now
                     countdown_left, recording_left = None, RECORD_SECONDS
-                    print(f"Recording {capture_label}...")
+                    print(f"Recording {selected_label}...")
             elif phase == "recording":
                 recording_left = RECORD_SECONDS - (now - phase_started)
                 if recording_left <= 0:
                     phase, recording_left = "idle", None
-                    print(f"Finished recording {capture_label}.")
-
-            if phase == "recording":
-                append_row({
-                    "t_rel": f"{now - phase_started:.3f}",
-                    "label": capture_label,
-                    "ms": f"{inference_elapsed * 1000.0:.1f}",
-                    "n_persons": n_persons,
-                    **{key: (f"{value:.6f}" if isinstance(value, float) else value)
-                       for key, value in diagnostics.items()},
-                })
+                    print(f"Finished recording {selected_label}.")
 
             draw_overlay(display, fps, inference_elapsed * 1000.0, n_persons,
                          selected_label, diagnostics, countdown_left, recording_left)
@@ -276,19 +265,25 @@ def main():
                 selected_label = LABELS[key]
                 print(f"Selected label: {selected_label}")
             elif key == ord(" ") and phase == "idle":
-                capture_label = selected_label
                 phase, phase_started = "countdown", time.perf_counter()
-                print(f"Countdown started for {capture_label}.")
-            elif key == ord("c"):
-                if LOG_PATH.exists():
-                    LOG_PATH.unlink()
-                print("CSV cleared.")
+                print(f"Countdown started for {selected_label}.")
             elif key == ord("q"):
                 break
+
+            if phase == "recording":
+                append_row(log_path, {
+                    "session_id": session_id,
+                    "t_rel": f"{now - phase_started:.3f}",
+                    "label": selected_label,
+                    "ms": f"{inference_elapsed * 1000.0:.1f}",
+                    "n_persons": n_persons,
+                    **{key: (f"{value:.6f}" if isinstance(value, float) else value)
+                       for key, value in diagnostics.items()},
+                })
     finally:
         cap.release()
         cv2.destroyAllWindows()
-        summary = build_summary()
+        summary = build_summary(log_path)
         print("\n" + summary)
         SUMMARY_PATH.write_text(summary + "\n", encoding="utf-8")
         print(f"\nSummary saved to {SUMMARY_PATH}.")

@@ -112,11 +112,11 @@ def run_scenario(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Send fake events to the Fallback backend")
     parser.add_argument("--scenario", choices=("fall", "heartbeat", "once"), default="fall")
-    parser.add_argument("--url", default="http://localhost:8000")
+    parser.add_argument("--server", default="http://localhost:8000")
     parser.add_argument("--x", type=float)
     parser.add_argument("--y", type=float)
     args = parser.parse_args()
-    run_scenario(args.scenario, args.url, load_frame(), args.x, args.y)
+    run_scenario(args.scenario, args.server, load_frame(), args.x, args.y)
 
 
 if __name__ == "__main__":

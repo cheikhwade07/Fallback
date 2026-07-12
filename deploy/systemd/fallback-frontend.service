@@ -1,0 +1,16 @@
+[Unit]
+Description=Fallback Next.js frontend
+After=network.target fallback-backend.service
+
+[Service]
+Type=simple
+User=fallback
+Group=fallback
+WorkingDirectory=/opt/fallback/frontend
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm start -- --hostname 127.0.0.1 --port 3000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
